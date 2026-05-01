@@ -64,7 +64,7 @@ int main() {
     nn.setMinimumPercentageError(0.0001f);
     nn.setLossStagnationTolerance(1e-15f);  // Extremely tight tolerance
     nn.setLossStagnationPatience(200);     // Give it more time to escape plateaus
-    nn.setPrintEpochInterval(10);
+//    nn.setPrintEpochInterval(1);
 
     // --- 3. TRAINING ---
     std::cout << "Training..." << std::endl;
