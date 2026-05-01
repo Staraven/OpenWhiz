@@ -19,34 +19,24 @@ int main() {
         std::cerr << "Failed to load data!" << std::endl;
         return -1;
     }
+    nn.getDataset()->normalizeData();
 
     // 2. Build Network Architecture
     // More capacity for complex non-linear airfoil physics
-    nn.createNeuralNetwork({32, 16}, "ReLU", "Identity", true);
+    nn.createNeuralNetwork({36, 36}, "ReLU", "Identity", true);
     
     // Mean Squared Error provides much faster convergence near the minimum for L-BFGS
     nn.setLoss(std::make_shared<ow::owMeanSquaredErrorLoss>());
-    nn.setRegularization(ow::NONE);
 
     // 3. Configure Training
-    nn.setOptimizer(std::make_shared<ow::owLBFGSOptimizer>(1.0f)); 
-    nn.setMaximumEpochNum(1000); 
-    nn.setMinimumError(0.001f); 
-    nn.setPrintEpochInterval(1); 
-    nn.setLossStagnationEnabled(false);
-    nn.setLossStagnationTolerance(0.0005f);
-    nn.setLossStagnationPatience(10);
+    nn.setOptimizer(std::make_shared<ow::owBFGSOptimizer>(1.0f));
 
     // 4. Train
     nn.train();
 
     // 5. Final Evaluation
-    auto testIn = nn.getDataset()->getTestInput();
-    auto testOut = nn.getDataset()->getTestTarget();
-    auto eval = nn.evaluatePerformance(testIn, testOut, 0.05f); // 5% tolerance
-    
     std::cout << "\nFinal Performance on Test Set:" << std::endl;
-    nn.printEvaluationReport(eval);
+    nn.printEvaluationReport(nn.evaluatePerformance());
 
     // Logging extra stats before manual prediction
     std::cout << "Total Epochs: " << nn.getTrainingEpochNum() << std::endl;
@@ -55,12 +45,23 @@ int main() {
     std::cout << "Final Val Error: " << nn.getLastValError() << std::endl;
     std::cout << "First Sample Type: " << nn.getDataset()->getSampleTypeString(0) << std::endl;
 
-    // 6. Manual Prediction Check (Using RAW values directly!)
-    // Input features: frequency;angle_of_attack;chord_lenght;velocity;thickness
+    // 6. Manual Prediction Check
     ow::owTensor<float, 2> input(1, 5);
     input.setValues({800.0f, 0.0f, 0.3048f, 71.3f, 0.00266337f});
     
+    // Manual normalization for the input sample based on dataset statistics
+    auto inputIndices = nn.getDataset()->getUsedColumnIndices(false);
+    for (size_t j = 0; j < inputIndices.size(); ++j) {
+        auto params = nn.getDataset()->getNormalizationParamsByColumnIndex(inputIndices[j]);
+        float minV = params.first;
+        float maxV = params.second;
+        input(0, (int)j) = (input(0, (int)j) - minV) / (maxV - minV);
+    }
+
     auto pred = nn.forward(input);
+    
+    // Convert prediction back to original scale
+    nn.getDataset()->inverseNormalize(pred);
     
     std::cout << "Prediction for [800, 0, 0.3048, 71.3, 0.00266337] = " << pred(0, 0) << " (Actual: 126.201)" << std::endl;
 

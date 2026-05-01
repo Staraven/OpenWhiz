@@ -23,46 +23,14 @@ class owDataset;
 /**
  * @class owLBFGSOptimizer
  * @brief Limited-memory Broyden–Fletcher–Goldfarb–Shanno (L-BFGS) optimizer.
- *
- * L-BFGS is a Quasi-Newton method that approximates the Hessian matrix (second-order information) 
- * using a limited history of gradient updates. It is a **Global Optimizer**, meaning it operates 
- * on all parameters of the network simultaneously.
- *
- * @par Comparison: L-BFGS vs. BFGS
- * - **Memory Efficiency:** L-BFGS uses @f$ O(mN) @f$ memory (where @f$ m @f$ is history size), 
- *   making it suitable for large-scale problems. Standard BFGS uses @f$ O(N^2) @f$, which 
- *   becomes prohibitive for large networks.
- * - **Approximation Strategy:** While BFGS maintains a full @f$ N \times N @f$ matrix, L-BFGS 
- *   reconstructs the curvature information using a "two-loop recursion" over the recent history.
- * - **When to use:**
- *     - Use **L-BFGS** for large neural networks where memory is a constraint.
- *     - Use **BFGS** (Standard) for small to medium networks where higher precision and 
- *       faster convergence to deep minima are required.
- *
- * **Advantages:**
- * - **Unmatched Precision:** Often finds the global or local minimum with extremely high accuracy.
- * - **Iteration Efficiency:** Requires far fewer iterations (epochs) than SGD or Adam.
- * - **Automatic Step-Size:** Uses an internal "Line Search" to find the optimal learning rate.
- *
- * @note **Industrial/Computer Use:** Highly recommended for high-precision modeling where 
- * accuracy is paramount and RAM is sufficient.
- * @note **Mobile/Web Use:** Generally NOT recommended due to the high RAM usage.
- * 
- * @important **GPU Compatibility:** L-BFGS is currently only supported in CPU mode. 
  */
  class owLBFGSOptimizer : public owOptimizer {
 private:
-    size_t m_m = 100; ///< Increased history size for better Hessian approximation.
-    std::deque<std::vector<double>> s_list; ///< Difference in parameters (history).
-    std::deque<std::vector<double>> y_list; ///< Difference in gradients (history).
-    std::deque<double> rho_list; ///< Precomputed scalar coefficients.
+    size_t m_m = 100;
+    std::deque<std::vector<double>> s_list;
+    std::deque<std::vector<double>> y_list;
+    std::deque<double> rho_list;
 
-    /**
-     * @brief Computes the dot product of two vectors.
-     * @param a First vector.
-     * @param b Second vector.
-     * @return double The resulting dot product.
-     */
     inline double dot(const std::vector<double>& a, const std::vector<double>& b) {
         double sum = 0;
         size_t n = a.size();
@@ -71,25 +39,10 @@ private:
     }
 
 public:
-    /**
-     * @brief Constructs an L-BFGS optimizer.
-     * @param lr The initial step size factor (default: 1.0).
-     * @param m The size of the update history (default: 100).
-     */
     explicit owLBFGSOptimizer(float lr = 1.0f, int m = 100) : m_m(m) {
         this->m_learningRate = lr;
     }
 
-    /**
-     * @brief Performs global optimization on the entire neural network.
-     *
-     * Implements the L-BFGS algorithm with backtracking line search.
-     * This method bypasses layer-wise updates and optimizes the whole network
-     * as a single vector.
-     *
-     * @param nn The neural network instance.
-     * @param ds The dataset for training.
-     */
     void optimizeGlobal(owNeuralNetwork* nn, owDataset* ds) override {
         size_t nParams = nn->getTotalParameterCount();
         if (nParams == 0) return;
@@ -107,11 +60,9 @@ public:
         auto compute_f_g = [&](const std::vector<double>& cur_x, std::vector<double>& cur_g) {
             for(size_t i=0; i<nParams; ++i) x_f.data()[i] = (float)cur_x[i];
             nn->setGlobalParameters(x_f);
-            nn->reset(); // Clear state (like sliding window history) for consistent evaluation
+            nn->reset();
             auto pred = nn->forward(trainIn);
             
-            // After the very first forward pass, we signal all layers to lock their cache.
-            // This is essential for owCacheLayer to stop recording and switch to playback.
             if (firstPass) {
                 for (auto& layer : nn->getLayers()) layer->lockCache();
                 firstPass = false;
@@ -119,15 +70,14 @@ public:
 
             const auto& activeTarget = nn->getActiveTarget(trainTarget);
             float loss = nn->calculateLoss(pred, activeTarget);
-            nn->reset(); // Clear state again before backward to ensure it uses fresh forward path
-            nn->forward(trainIn); // Re-run forward to populate state for backward pass
+            nn->reset();
+            nn->forward(trainIn);
             nn->backward(pred, activeTarget);
             nn->getGlobalGradients(g_f);
             for(size_t i=0; i<nParams; ++i) cur_g[i] = (double)g_f.data()[i];
             return (double)loss;
         };
 
-        // Ensure all layers have access to the target tensor for local loss/caching
         for (auto& layer : nn->getLayers()) layer->setTarget(&trainTarget);
 
         double f = compute_f_g(x, g);
@@ -136,6 +86,25 @@ public:
         auto startTime = std::chrono::high_resolution_clock::now();
 
         for (int k = 1; k <= nn->getMaximumEpochNum(); ++k) {
+            nn->setTrainingEpochNum(k); // Ensure counter is updated at the start of epoch
+            
+            // Validation loss calculation
+            float valLoss = 0.0f;
+            auto valIn = ds->getValInput();
+            if (valIn.size() > 0) {
+                auto valTarget = ds->getValTarget();
+                auto valPred = nn->forward(valIn);
+                valLoss = nn->calculateLoss(valPred, valTarget);
+                nn->setLastValError(valLoss);
+            }
+
+            // Print Status at the beginning of epoch
+            if (nn->getPrintEpochInterval() > 0 && (k == 1 || k % nn->getPrintEpochInterval() == 0)) {
+                auto now = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> currentElapsed = now - startTime;
+                nn->printTrainingStatus(k, (float)f, valLoss, currentElapsed.count());
+            }
+
             // 1. Direction Calculation
             if (s_list.empty()) {
                 for(size_t i=0; i<nParams; ++i) d[i] = -g[i];
@@ -159,13 +128,11 @@ public:
                 for(size_t i=0; i<nParams; ++i) d[i] *= -1.0;
             }
 
-            // 2. Line Search (Strong Wolfe)
             double g_norm = 0;
             for(size_t i=0; i<nParams; ++i) g_norm += g[i]*g[i];
             g_norm = std::sqrt(g_norm);
 
             double g_dot_d = dot(g, d);
-            // If direction is not descent, reset history
             if (g_dot_d > -1e-9 * g_norm) {
                 s_list.clear(); y_list.clear(); rho_list.clear();
                 for(size_t i=0; i<nParams; ++i) d[i] = -g[i];
@@ -178,17 +145,15 @@ public:
             std::vector<double> g_next(nParams);
             double f_next = f;
 
-            const double c1 = 1e-4; // Armijo constant
-            const double c2 = 0.9;  // Wolfe constant
+            const double c1 = 1e-4;
+            const double c2 = 0.9;
 
             for (int i = 0; i < 60; ++i) {
                 for(size_t j=0; j<nParams; ++j) x_next[j] = x[j] + step * d[j];
                 f_next = compute_f_g(x_next, g_next);
 
-                // Armijo condition
                 if (f_next <= f + c1 * step * g_dot_d + 1e-12) {
                     double g_next_dot_d = dot(g_next, d);
-                    // Strong Wolfe Curvature condition
                     if (std::abs(g_next_dot_d) <= c2 * std::abs(g_dot_d)) {
                         success = true;
                         break;
@@ -200,17 +165,21 @@ public:
             }
 
             if (!success && s_list.size() > 0) {
-                // If line search failed with approximated Hessian, reset history and retry
                 s_list.clear(); y_list.clear(); rho_list.clear();
                 continue;
             }
 
             if (!success) {
                 nn->setTrainingFinishReason("Minimum Precision Limit");
+                // Final print if failed
+                if (nn->getPrintEpochInterval() > 0 && k % nn->getPrintEpochInterval() != 0) {
+                    auto now = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> currentElapsed = now - startTime;
+                    nn->printTrainingStatus(k, (float)f, valLoss, currentElapsed.count());
+                }
                 break;
             }
 
-            // 3. Update History
             std::vector<double> sk(nParams), yk(nParams);
             for(size_t j=0; j<nParams; ++j) {
                 sk[j] = x_next[j] - x[j];
@@ -227,20 +196,9 @@ public:
             x = x_next; g = g_next; f = f_next;
             nn->setLastTrainError((float)f);
 
-            // Validation loss calculation (optional but consistent)
-            float valLoss = 0.0f;
-            auto valIn = ds->getValInput();
-            if (valIn.size() > 0) {
-                auto valTarget = ds->getValTarget();
-                auto valPred = nn->forward(valIn);
-                valLoss = nn->calculateLoss(valPred, valTarget);
-                nn->setLastValError(valLoss);
-            }
-
             // --- MAPE Based Stopping ---
             if (nn->getMinimumPercentageError() > 0.0f) {
                 float currentMape = 0.0f;
-                // Compute current predictions to get MAPE
                 auto pred = nn->forward(trainIn);
                 const auto& activeTarget = nn->getActiveTarget(trainTarget);
                 size_t n = pred.shape()[0], outDim = pred.shape()[1];
@@ -253,23 +211,13 @@ public:
                 currentMape = (currentMape / (n * outDim)) * 100.0f;
                 if (currentMape <= nn->getMinimumPercentageError()) {
                     nn->setTrainingFinishReason("Minimum Error");
-                    nn->setTrainingEpochNum(k);
-                    if (nn->getPrintEpochInterval() > 0 && k % nn->getPrintEpochInterval() != 0) {
-                        auto now = std::chrono::high_resolution_clock::now();
-                        std::chrono::duration<double> currentElapsed = now - startTime;
-                        nn->printTrainingStatus(k, (float)f, valLoss, currentElapsed.count());
-                    }
+                    auto now = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> currentElapsed = now - startTime;
+                    nn->printTrainingStatus(k, (float)f, valLoss, currentElapsed.count());
                     break;
                 }
             }
 
-            if (nn->getPrintEpochInterval() > 0 && (k == 1 || k % nn->getPrintEpochInterval() == 0)) {
-                auto now = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<double> currentElapsed = now - startTime;
-                nn->printTrainingStatus(k, (float)f, valLoss, currentElapsed.count());
-            }
-
-            // Force at least 100 epochs if it's early and accuracy isn't perfect yet
             bool canStop = (k > 100) && nn->isLossStagnationEnabled();
 
             if (f < bestLoss - (double)nn->getLossStagnationTolerance()) {
@@ -280,8 +228,6 @@ public:
 
             if ((canStop && patience >= nn->getLossStagnationPatience()) || f < nn->getMinimumError()) {
                 nn->setTrainingFinishReason(f < nn->getMinimumError() ? "Minimum Error" : "Loss Stagnation");
-                nn->setTrainingEpochNum(k);
-                // Print final epoch if not already printed
                 if (nn->getPrintEpochInterval() > 0 && k % nn->getPrintEpochInterval() != 0) {
                     auto now = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double> currentElapsed = now - startTime;
@@ -290,10 +236,8 @@ public:
                 break;
             }
             
-            nn->setTrainingEpochNum(k);
             nn->setTrainingFinishReason("Maximum Epoch Num");
 
-            // Print final epoch if limit reached and not already printed
             if (k == nn->getMaximumEpochNum() && nn->getPrintEpochInterval() > 0 && k % nn->getPrintEpochInterval() != 0) {
                 auto now = std::chrono::high_resolution_clock::now();
                 std::chrono::duration<double> currentElapsed = now - startTime;
@@ -304,27 +248,9 @@ public:
         nn->setGlobalParameters(x_f);
     }
 
-    /**
-     * @brief Layer-wise update is not used for L-BFGS.
-     * This method is an empty override as L-BFGS uses optimizeGlobal().
-     */
     void update(owTensor<float, 2>&, const owTensor<float, 2>&) override {}
-
-    /**
-     * @brief Returns the name of the optimizer.
-     */
     std::string getOptimizerName() const override { return "L-BFGS"; }
-
-    /**
-     * @brief Creates a deep copy of the L-BFGS optimizer.
-     * @return std::shared_ptr<owOptimizer> A shared pointer to the cloned instance.
-     */
     std::shared_ptr<owOptimizer> clone() const override { return std::make_shared<owLBFGSOptimizer>(m_learningRate); }
-
-    /**
-     * @brief Indicates support for global optimization.
-     * @return true Always returns true for L-BFGS.
-     */
     bool supportsGlobalOptimization() const override { return true; }
 };
 

@@ -293,8 +293,17 @@ public:
         int inputColsBoundary = (int)m_columns.size() - m_targetVariableNum;
 
         if (!includeTarget) {
-            for (int i = 0; i < (int)m_columns.size(); ++i) {
+            int limit = (inputColsBoundary > 0 ? inputColsBoundary : 0);
+            for (int i = 0; i < limit; ++i) {
                 if (m_columns[i].usage == ColumnUsage::USED) indices.push_back(i);
+            }
+            
+            // If no specific input columns are found (common in "No-Prep" forecasting),
+            // we default to using target columns as inputs.
+            if (indices.empty()) {
+                for (int i = (inputColsBoundary > 0 ? inputColsBoundary : 0); i < (int)m_columns.size(); ++i) {
+                    if (m_columns[i].usage == ColumnUsage::USED) indices.push_back(i);
+                }
             }
         } else {
             for (int i = (inputColsBoundary > 0 ? inputColsBoundary : 0); i < (int)m_columns.size(); ++i) {
