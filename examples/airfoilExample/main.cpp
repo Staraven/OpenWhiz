@@ -45,23 +45,12 @@ int main() {
     std::cout << "Final Val Error: " << nn.getLastValError() << std::endl;
     std::cout << "First Sample Type: " << nn.getDataset()->getSampleTypeString(0) << std::endl;
 
-    // 6. Manual Prediction Check
+    // 6. Manual Prediction Check (Using the new Smart Predict API!)
     ow::owTensor<float, 2> input(1, 5);
     input.setValues({800.0f, 0.0f, 0.3048f, 71.3f, 0.00266337f});
     
-    // Manual normalization for the input sample based on dataset statistics
-    auto inputIndices = nn.getDataset()->getUsedColumnIndices(false);
-    for (size_t j = 0; j < inputIndices.size(); ++j) {
-        auto params = nn.getDataset()->getNormalizationParamsByColumnIndex(inputIndices[j]);
-        float minV = params.first;
-        float maxV = params.second;
-        input(0, (int)j) = (input(0, (int)j) - minV) / (maxV - minV);
-    }
-
-    auto pred = nn.forward(input);
-    
-    // Convert prediction back to original scale
-    nn.getDataset()->inverseNormalize(pred);
+    // Smart predict handles both input normalization and output inverse normalization automatically!
+    auto pred = nn.predict(input);
     
     std::cout << "Prediction for [800, 0, 0.3048, 71.3, 0.00266337] = " << pred(0, 0) << " (Actual: 126.201)" << std::endl;
 

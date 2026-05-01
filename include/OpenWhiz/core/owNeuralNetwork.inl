@@ -91,10 +91,21 @@ inline owTensor<float, 2> owNeuralNetwork::forward(const owTensor<float, 2>& inp
 }
 
 inline owTensor<float, 2> owNeuralNetwork::predict(const owTensor<float, 2>& input) {
-    auto output = forward(input);
-    if (m_dataset && (m_projectType == owProjectType::APPROXIMATION || m_projectType == owProjectType::FORECASTING)) {
+    owTensor<float, 2> processedInput = input;
+    
+    // 1. Auto-Normalize input if dataset-level normalization was used
+    if (m_dataset && m_dataset->isNormalized()) {
+        m_dataset->normalize(processedInput);
+    }
+
+    // 2. Forward pass
+    auto output = forward(processedInput);
+
+    // 3. Auto-Inverse output if dataset-level normalization was used
+    if (m_dataset && m_dataset->isNormalized()) {
         m_dataset->inverseNormalize(output);
     }
+    
     return output;
 }
 
