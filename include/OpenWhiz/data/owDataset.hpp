@@ -368,6 +368,22 @@ public:
         m_isNormalized = true;
     }
 
+    void normalize(owTensor<float, 2>& data) const {
+        std::vector<int> inputIndices = getUsedColumnIndices(false);
+        if (data.shape()[1] != inputIndices.size()) return;
+
+        for (size_t i = 0; i < data.shape()[0]; ++i) {
+            for (size_t j = 0; j < inputIndices.size(); ++j) {
+                int colIdx = inputIndices[j];
+                float minVal = m_columns[colIdx].min;
+                float maxVal = m_columns[colIdx].max;
+                float range = maxVal - minVal;
+                if (range == 0.0f) range = 1.0f;
+                data(i, j) = (data(i, j) - minVal) / range;
+            }
+        }
+    }
+
     void inverseNormalize(owTensor<float, 2>& data, int targetVarIdx = 0) {
         int actualColIdx = getTargetColumnIndex(targetVarIdx);
         float minV = m_columns[actualColIdx].min;
