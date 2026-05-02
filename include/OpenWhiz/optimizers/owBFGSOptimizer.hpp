@@ -116,13 +116,20 @@ public:
             }
 
             double g_dot_d = dot(g, d);
-            if (g_dot_d >= 0) {
+            if (g_dot_d >= -1e-12) { // Use a small negative threshold
                 resetHessian();
                 for (size_t i = 0; i < nParams; ++i) d[i] = -g[i];
                 g_dot_d = dot(g, d);
             }
 
-            double step = (k == 1) ? 1.0 / std::sqrt(dot(g, g) + 1e-10) : lastStep;
+            // Improved initial step size heuristic
+            double step = 1.0;
+            if (k == 1) {
+                double g_norm = std::sqrt(dot(g, g));
+                step = (g_norm > 1e-6) ? (1.0 / g_norm) : 1.0;
+            } else {
+                step = lastStep;
+            }
             if (step > 1.0) step = 1.0;
             if (step < 1e-6) step = 1e-6;
 
@@ -131,37 +138,28 @@ public:
             double f_next = f;
 
             const double c1 = 1e-4;
-            const double c2 = 0.01;
+            const double rho = 0.7; // Better reduction factor than 0.5
 
-            for (int i = 0; i < 150; ++i) {
+            for (int i = 0; i < 100; ++i) {
                 for(size_t j=0; j<nParams; ++j) x_next[j] = x[j] + step * d[j];
                 f_next = compute_f_g(x_next, g_next);
 
-                if (f_next < f + c1 * step * g_dot_d + 1e-9) {
-                    double g_next_dot_d = dot(g_next, d);
-                    if (g_next_dot_d >= c2 * g_dot_d) {
-                        success = true;
-                        lastStep = step * 1.2; 
-                        if (lastStep > 1.0) lastStep = 1.0;
-                        break;
-                    }
+                // Armijo condition
+                if (f_next <= f + c1 * step * g_dot_d + 1e-12) {
+                    success = true;
+                    lastStep = std::min(1.0, step * 1.5); 
+                    break;
                 }
-                step *= 0.5; 
-                if (step < 1e-40) break;
+                step *= rho; 
+                if (step < 1e-20) break;
             }
 
             if (!success) {
-                double eps = std::numeric_limits<double>::epsilon();
-                bool perturbed = false;
-                for (size_t i = 0; i < nParams; ++i) {
-                    if (std::abs(g[i]) > 1e-35) {
-                        x_next[i] = x[i] - (g[i] > 0 ? eps : -eps);
-                        perturbed = true;
-                    } else {
-                        x_next[i] = x[i];
-                    }
-                }
-                if (perturbed) {
+                // Fallback to a very small gradient step if line search fails
+                double g_norm = std::sqrt(dot(g, g));
+                if (g_norm > 1e-12) {
+                    double tiny_step = 1e-7 / g_norm;
+                    for(size_t j=0; j<nParams; ++j) x_next[j] = x[j] - tiny_step * g[j];
                     f_next = compute_f_g(x_next, g_next);
                     if (f_next < f) {
                         success = true;
@@ -195,34 +193,55 @@ public:
 
             double ys = dot(yk, sk);
             
-            if (k == 1 || g_dot_d >= 0) {
+            // Initial Hessian Scaling (Barzilai-Borwein style)
+            if (k == 1) {
                 double yy = dot(yk, yk);
-                if (ys > 1e-30 && yy > 1e-30) {
+                if (ys > 1e-12 && yy > 1e-12) {
                     double scale = ys / yy;
                     for (size_t i = 0; i < nParams; ++i) {
                         for (size_t j = 0; j < nParams; ++j) {
-                            if (i == j) invH[i * nParams + j] = scale;
-                            else invH[i * nParams + j] = 0.0;
+                            invH[i * nParams + j] = (i == j) ? scale : 0.0;
                         }
                     }
                 }
             }
 
+            // --- Dampened BFGS (Powell's modification) ---
+            // Ensures B (and thus invH) remains positive definite
             std::vector<double> Hs(nParams, 0.0);
             for(size_t i=0; i<nParams; ++i) {
                 for(size_t j=0; j<nParams; ++j) Hs[i] += invH[i * nParams + j] * yk[j];
             }
             double sHs = dot(yk, Hs);
 
-            if (ys > 1e-30 && sHs > 1e-30) {
+            double theta = 1.0;
+            if (ys < 0.2 * sHs) {
+                theta = (0.8 * sHs) / (sHs - ys);
+            }
+            
+            std::vector<double> rk(nParams);
+            for(size_t i=0; i<nParams; ++i) rk[i] = theta * yk[i] + (1.0 - theta) * Hs[i];
+            
+            double rs = dot(rk, sk);
+            if (rs > 1e-12) {
+                // Recalculate Hs with dampened rk if needed, but standard BFGS uses sk and yk
+                // For invH update: H_{k+1} = (I - sk*yk'/yk'sk) * Hk * (I - yk*sk'/yk'sk) + sk*sk'/yk'sk
+                // We use the Sherman-Morrison-Woodbury version for invH directly:
+                
+                std::vector<double> Hr(nParams, 0.0);
+                for(size_t i=0; i<nParams; ++i) {
+                    for(size_t j=0; j<nParams; ++j) Hr[i] += invH[i * nParams + j] * rk[j];
+                }
+                double rHr = dot(rk, Hr);
+                
                 std::vector<double> bfgs_v(nParams);
-                for (size_t i = 0; i < nParams; ++i) bfgs_v[i] = sk[i] / ys - Hs[i] / sHs;
+                for (size_t i = 0; i < nParams; ++i) bfgs_v[i] = sk[i] / rs - Hr[i] / rHr;
 
                 for (size_t i = 0; i < nParams; ++i) {
                     for (size_t j = 0; j < nParams; ++j) {
-                        double update = (sk[i] * sk[j]) / ys 
-                                      - (Hs[i] * Hs[j]) / sHs 
-                                      + (bfgs_v[i] * bfgs_v[j]) * sHs;
+                        double update = (sk[i] * sk[j]) / rs 
+                                      - (Hr[i] * Hr[j]) / rHr 
+                                      + (bfgs_v[i] * bfgs_v[j]) * rHr;
                         invH[i * nParams + j] += update;
                     }
                 }

@@ -90,7 +90,27 @@ inline owTensor<float, 2> owNeuralNetwork::forward(const owTensor<float, 2>& inp
     return currentOutput;
 }
 
-inline owTensor<float, 2> owNeuralNetwork::predict(const owTensor<float, 2>& input) {
+/**
+ * @brief Predicts the output for a given input tensor, handling normalization and state management.
+ * 
+ * This function is the high-level entry point for inference. It performs the following steps:
+ * 1. (Optional) Resets the network state if autoReset is true.
+ * 2. Automatically normalizes the input if the associated dataset is normalized.
+ * 3. Performs a forward pass through the network layers.
+ * 4. Automatically inverse-normalizes the output if the associated dataset is normalized.
+ * 
+ * @param input The input tensor (2D: [batch_size, features]).
+ * @param autoReset If true, calls reset() before prediction. 
+ *                  - Set to TRUE for independent samples (e.g., sliding window forecasting where each 
+ *                    window contains its own history).
+ *                  - Set to FALSE for sequential/recursive forecasting (e.g., feeding the model's 
+ *                    own predictions back to it) where internal state (like LSTM hidden states or 
+ *                    SlidingWindow buffers) must be preserved across calls.
+ * @return owTensor<float, 2> The prediction results in real-world scale (if normalized).
+ */
+inline owTensor<float, 2> owNeuralNetwork::predict(const owTensor<float, 2>& input, bool autoReset) {
+    if (autoReset) reset();
+
     owTensor<float, 2> processedInput = input;
     
     // 1. Auto-Normalize input if dataset-level normalization was used
