@@ -35,7 +35,6 @@ int main() {
     }
     
     dataset->setColumnUsage("Date", ow::ColumnUsage::UNUSED);
-    dataset->setTargetVariableNum(1);
     
     // Prepare sliding window
     int windowSize = 5;
@@ -45,26 +44,11 @@ int main() {
     ow::owNeuralNetwork nn;
     nn.setDataset(dataset);
 
-    // High-Precision Architecture
-    auto layer1 = std::make_shared<ow::owLinearLayer>(nn.getDataset()->getInputVariableNum(), 32);
-    layer1->setActivationByName("LeakyReLU");
-    nn.addLayer(layer1);
+    // High-Precision Architecture: {64, 32} hidden neurons with ReLU, Identity output
+    nn.createNeuralNetwork({64, 32}, "ReLU", "Identity");
 
-    auto layer2 = std::make_shared<ow::owLinearLayer>(32, 16);
-    layer2->setActivationByName("LeakyReLU");
-    nn.addLayer(layer2);
-
-    auto layer3 = std::make_shared<ow::owLinearLayer>(16, 1);
-    layer3->setActivationByName("Identity");
-    nn.addLayer(layer3);
-
-    nn.setOptimizer(std::make_shared<ow::owBFGSOptimizer>(1.0f));
+    nn.setOptimizer(std::make_shared<ow::owBFGSOptimizer>(0.1f));
     nn.setLoss(std::make_shared<ow::owMeanSquaredErrorLoss>());
-    nn.setMaximumEpochNum(3000);
-    nn.setMinimumPercentageError(0.0001f);
-    nn.setLossStagnationTolerance(1e-15f);  // Extremely tight tolerance
-    nn.setLossStagnationPatience(200);     // Give it more time to escape plateaus
-//    nn.setPrintEpochInterval(1);
 
     // --- 3. TRAINING ---
     std::cout << "Training..." << std::endl;
@@ -75,35 +59,32 @@ int main() {
     std::cout << std::setw(15) << "Actual" << std::setw(15) << "Predicted" << std::setw(15) << "Error" << std::setw(15) << "Type" << std::endl;
     std::cout << "----------------------------------------------------------------------------" << std::endl;
 
-    nn.reset();
-    
-    // Get ALL data to pick the last 5 chronological rows
-    auto allIn = dataset->getAllInput();
-    auto allOut = dataset->getAllTarget();
-    
-    size_t totalRows = allIn.shape()[0];
-    size_t startRow = totalRows - 5;
-
-    // Create a mini-batch for the last 5 samples
-    ow::owTensor<float, 2> last5In(5, allIn.shape()[1]);
-    ow::owTensor<float, 2> last5Out(5, 1);
+    size_t totalSamples = dataset->getSampleNum();
+    size_t startRow = totalSamples - 5;
 
     for (size_t i = 0; i < 5; ++i) {
-        for (size_t j = 0; j < allIn.shape()[1]; ++j) {
-            last5In(i, j) = allIn(startRow + i, j);
-        }
-        last5Out(i, 0) = allOut(startRow + i, 0);
-    }
-    
-    // Predict and inverse normalize
-    auto pred = nn.forward(last5In);
-    dataset->inverseNormalize(pred);
-    dataset->inverseNormalize(last5Out);
+        size_t sampleIdx = startRow + i;
 
-    for (size_t i = 0; i < 5; ++i) {
-        float actual = last5Out(i, 0);
-        float predicted = pred(i, 0);
-        std::string sampleType = dataset->getSampleTypeString(startRow + i);
+        // Get input and target values for the sample (normalized in dataset)
+        ow::owTensor<float, 1> sampleIn = dataset->getInputValues(sampleIdx);
+        ow::owTensor<float, 1> sampleOut = dataset->getTargetValues(sampleIdx);
+
+        // Convert to 2D tensors for processing
+        ow::owTensor<float, 2> In2D(1, sampleIn.size());
+        ow::owTensor<float, 2> Out2D(1, sampleOut.size());
+        for(size_t j=0; j<sampleIn.size(); ++j) In2D(0, j) = sampleIn(j);
+        for(size_t j=0; j<sampleOut.size(); ++j) Out2D(0, j) = sampleOut(j);
+
+        // Convert back to raw values to demonstrate 'nn.predict'
+        dataset->inverseNormalize(In2D);
+        dataset->inverseNormalize(Out2D);
+
+        // Predict using raw values
+        auto pred = nn.predict(In2D);
+
+        float actual = Out2D(0, 0);
+        float predicted = pred(0, 0);
+        std::string sampleType = dataset->getSampleTypeString(sampleIdx);
 
         std::cout << std::fixed << std::setprecision(2) 
                   << std::setw(15) << actual 
@@ -111,6 +92,23 @@ int main() {
                   << std::setw(15) << std::abs(actual - predicted)
                   << std::setw(15) << sampleType << std::endl;
     }
+
+    std::cout << "************" << std::endl;
+
+    ow::owTensor<float, 2> T1(1, 5);
+    T1.setValues({7969.88f, 7807.87f, 7665.62f, 7726.20f, 7743.92f});
+    auto pred1 = nn.predict(T1);
+    std::cout << "actual: 7846.55, pred1: " << pred1(0, 0) << ", diff:" << (pred1(0, 0) - 7846.55) << std::endl;
+
+    ow::owTensor<float, 2> T2(1, 5);
+    T2.setValues({7807.87f, 7665.62f, 7726.20f, 7743.92f, 7846.55f});
+    auto pred2 = nn.predict(T2);
+    std::cout << "actual: 7769.31, pred2: " << pred2(0, 0) << ", diff:" << (pred2(0, 0) - 7769.31) << std::endl;
+
+    ow::owTensor<float, 2> T3(1, 5);
+    T3.setValues({7665.62f, 7726.20f, 7743.92f, 7846.55f, 7769.31f});
+    auto pred3 = nn.predict(T3);
+    std::cout << "actual: 7701.95, pred3: " << pred3(0, 0) << ", diff:" << (pred3(0, 0) - 7701.95) << std::endl;
 
     return 0;
 }

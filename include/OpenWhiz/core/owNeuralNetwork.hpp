@@ -379,9 +379,10 @@ public:
     /**
      * @brief High-level prediction method that applies inverse normalization if needed.
      * @param input Input features.
+     * @param autoReset If true, calls reset() before prediction.
      * @return Processed output (e.g., actual price in forecasting).
      */
-    owTensor<float, 2> predict(const owTensor<float, 2>& input);
+    owTensor<float, 2> predict(const owTensor<float, 2>& input, bool autoReset = false);
 
     /**
      * @brief Prediction using the last sample from the dataset.

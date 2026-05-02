@@ -116,9 +116,12 @@ public:
         if (!file.is_open()) return false;
         std::string line;
 
+        // Clear previous raw data
+        m_rawCSVData.clear();
+
         // Automatic Delimiter Detection
         if (std::getline(file, line)) {
-            char candidates[] = {';', '|', '\t', ','};
+            char candidates[] = {',', ';', '|', '\t'};
             char best_d = m_delimiter;
             int max_c = 0;
             
@@ -129,6 +132,9 @@ public:
                     best_d = cnd;
                 }
             }
+            // If no clear winner, but the line contains commas and we are at default ';', prefer ','
+            if (max_c == 0 && line.find(',') != std::string::npos) best_d = ',';
+
             m_delimiter = best_d;
             
             file.clear();
@@ -158,7 +164,6 @@ public:
             }
         }
 
-        std::vector<std::vector<std::string>> raw_data;
         while (std::getline(file, line)) {
             if (line.empty()) continue;
             std::stringstream ss(line);
@@ -181,18 +186,18 @@ public:
                 if ((size_t)idx < full_row.size()) filtered_row.push_back(full_row[idx]);
                 else filtered_row.push_back("0");
             }
-            raw_data.push_back(filtered_row);
+            m_rawCSVData.push_back(filtered_row);
         }
 
-        if (raw_data.empty()) return false;
-        size_t rows = raw_data.size();
+        if (m_rawCSVData.empty()) return false;
+        size_t rows = m_rawCSVData.size();
         size_t cols = m_columns.size();
 
         // Detect Data Types and Categorical Mapping
         for (size_t c = 0; c < cols; ++c) {
             bool all_numeric = true;
             for (size_t r = 0; r < rows; ++r) {
-                const std::string& val = raw_data[r][c];
+                const std::string& val = m_rawCSVData[r][c];
                 if (val.empty() || val == "NaN" || val == "null" || val == "nan") continue;
                 
                 bool has_digit = false;
@@ -217,7 +222,7 @@ public:
                 m_columns[c].type = DataType::Text;
                 float next_id = 0.0f;
                 for (size_t r = 0; r < rows; ++r) {
-                    const std::string& val = raw_data[r][c];
+                    const std::string& val = m_rawCSVData[r][c];
                     if (m_columns[c].category_map.find(val) == m_columns[c].category_map.end()) {
                         m_columns[c].category_map[val] = next_id++;
                         m_columns[c].reverse_category_map.push_back(val);
@@ -228,7 +233,7 @@ public:
 
         m_fullData = owTensor<float, 2>(rows, cols);
         for (size_t c = 0; c < cols; ++c) {
-            for (size_t r = 0; r < rows; ++r) m_fullData(r, c) = parseValue(raw_data[r][c], m_columns[c]);
+            for (size_t r = 0; r < rows; ++r) m_fullData(r, c) = parseValue(m_rawCSVData[r][c], m_columns[c]);
         }
 
         calculateStatistics();
@@ -241,11 +246,36 @@ public:
         return true;
     }
 
+    /**
+     * @brief Toggles whether automatic normalization is enabled.
+     * @param enable True to enable, false to disable.
+     */
     void setAutoNormalizeEnabled(bool enable) { m_autoNormalizeEnabled = enable; m_isNormalized = enable; }
+
+    /**
+     * @brief Checks if the dataset's internal data is currently normalized.
+     * @return True if normalized, false otherwise.
+     */
     bool isNormalized() const { return m_isNormalized; }
+
+    /**
+     * @brief Sets the number of columns at the end of the dataset to be treated as target variables.
+     * @param num Number of target variables.
+     */
     void setTargetVariableNum(int num) { m_targetVariableNum = num; }
+
+    /**
+     * @brief Gets the number of target variables currently configured.
+     * @return Integer count.
+     */
     int getTargetVariableNum() const { return m_targetVariableNum; }
 
+    /** @return The original raw CSV data rows (filtered by columns kept). */
+    const std::vector<std::vector<std::string>>& getOriginalCSVData() const { return m_rawCSVData; }
+
+    /**
+     * @brief Recalculates min/max statistics for all columns based on the current full data.
+     */
     void calculateStatistics() {
         if (m_fullData.size() == 0) return;
         size_t rows = m_fullData.shape()[0];
@@ -261,6 +291,12 @@ public:
         }
     }
 
+    /**
+     * @brief Resolves a float value back to its original label string if the column is categorical.
+     * @param actualColIdx Index of the column.
+     * @param value Float value to resolve.
+     * @return Label string or string representation of the float.
+     */
     std::string getLabelName(int actualColIdx, float value) const {
         if (actualColIdx < 0 || (size_t)actualColIdx >= m_columns.size()) return "";
         const auto& info = m_columns[actualColIdx];
@@ -273,11 +309,21 @@ public:
         return std::to_string(value);
     }
 
+    /**
+     * @brief Maps a target variable index to its actual column index in the full data matrix.
+     * @param targetVarIdx Index of the target variable (0 to targetVariableNum - 1).
+     * @return Actual column index.
+     */
     int getTargetColumnIndex(int targetVarIdx = 0) const {
         int inputColsBoundary = (int)m_columns.size() - m_targetVariableNum;
         return inputColsBoundary + targetVarIdx;
     }
 
+    /**
+     * @brief Configures how a specific column should be used (USED, UNUSED, or ORDERING).
+     * @param name Name of the column.
+     * @param usage Desired usage status.
+     */
     void setColumnUsage(const std::string& name, ColumnUsage usage) {
         std::string target = trim(name);
         for (auto& col : m_columns) {
@@ -288,6 +334,11 @@ public:
         }
     }
 
+    /**
+     * @brief Retrieves indices of columns currently marked for usage.
+     * @param includeTarget If true, returns only target column indices. If false, returns only input column indices.
+     * @return Vector of indices.
+     */
     std::vector<int> getUsedColumnIndices(bool includeTarget = false) const {
         std::vector<int> indices;
         int inputColsBoundary = (int)m_columns.size() - m_targetVariableNum;
@@ -313,12 +364,21 @@ public:
         return indices;
     }
 
+    /**
+     * @brief Returns the total number of input variables (features) used for training.
+     * @return Integer count.
+     */
     int getInputVariableNum() const { 
         return (int)getUsedColumnIndices(false).size();
     }
 
+    /** @return Total number of samples in the dataset. */
     size_t getSampleNum() const { return m_fullData.shape()[0]; }
+
+    /** @return Vector containing sample category (Train/Val/Test) for each row. */
     const std::vector<SampleType>& getSampleTypes() const { return m_sampleTypes; }
+
+    /** @return A copy of the full internal data matrix. */
     owTensor<float, 2> getData() const { return m_fullData; }
 
     /** @return The original name of the column at the specified index. */
@@ -348,6 +408,9 @@ public:
         return res;
     }
 
+    /**
+     * @brief Applies Min-Max normalization to the entire internal dataset.
+     */
     void normalizeData() {
         if (m_fullData.size() == 0) return;
         calculateStatistics();
@@ -368,6 +431,10 @@ public:
         m_isNormalized = true;
     }
 
+    /**
+     * @brief Normalizes an external input tensor using the dataset's statistics.
+     * @param data 2D tensor to be normalized in-place.
+     */
     void normalize(owTensor<float, 2>& data) const {
         std::vector<int> inputIndices = getUsedColumnIndices(false);
         if (data.shape()[1] != inputIndices.size()) return;
@@ -384,6 +451,11 @@ public:
         }
     }
 
+    /**
+     * @brief Scales values back to their original range using target column statistics.
+     * @param data 2D tensor to be de-normalized in-place.
+     * @param targetVarIdx Index of the target variable to use for statistics.
+     */
     void inverseNormalize(owTensor<float, 2>& data, int targetVarIdx = 0) {
         int actualColIdx = getTargetColumnIndex(targetVarIdx);
         float minV = m_columns[actualColIdx].min;
@@ -397,6 +469,15 @@ public:
         }
     }
 
+    /**
+     * @brief Prepares the dataset for time-series forecasting by creating lag features.
+     * 
+     * This method implements a sliding window at the dataset level. For each sample,
+     * it prepends 'windowSize' historical values of the target column as new features.
+     * 
+     * @param windowSize Number of historical steps to include as features.
+     * @param dilation Spacing between sampled historical steps (default 1).
+     */
     void prepareForecastData(int windowSize, int dilation = 1) {
         if (m_fullData.size() == 0 || windowSize <= 0) return;
         size_t originalRows = m_fullData.shape()[0];
@@ -436,6 +517,10 @@ public:
         m_columns = newColumns;
     }
 
+    /**
+     * @brief Retrieves the most recent (last) sample's features from the dataset.
+     * @return 2D tensor [1, InputFeatures].
+     */
     owTensor<float, 2> getLastSample() const {
         std::vector<int> indices = getUsedColumnIndices(false);
         if (m_fullData.shape()[0] == 0 || indices.empty()) return owTensor<float, 2>(0, 0);
@@ -445,11 +530,21 @@ public:
         return res;
     }
 
+    /**
+     * @brief Gets min/max normalization parameters for a specific column index.
+     * @param colIdx Actual index of the column in the data matrix.
+     * @return Pair containing {min, max}.
+     */
     std::pair<float, float> getNormalizationParamsByColumnIndex(int colIdx) const {
         if (colIdx < 0 || (size_t)colIdx >= m_columns.size()) return {0.0f, 1.0f};
         return {m_columns[colIdx].min, m_columns[colIdx].max};
     }
 
+    /**
+     * @brief Gets normalization parameters for a used column index (0 to InputVariableNum-1).
+     * @param usedColIdx Relative index among columns marked as USED for input.
+     * @return Pair containing {min, max}.
+     */
     std::pair<float, float> getNormalizationParams(int usedColIdx) const {
         std::vector<int> indices = getUsedColumnIndices(false);
         if (usedColIdx < 0 || (size_t)usedColIdx >= indices.size()) return {0.0f, 1.0f};
@@ -457,6 +552,11 @@ public:
         return {m_columns[actualIdx].min, m_columns[actualIdx].max};
     }
 
+    /**
+     * @brief Gets normalization parameters for a column by its header name.
+     * @param name Name of the column.
+     * @return Pair containing {min, max}.
+     */
     std::pair<float, float> getNormalizationParams(const std::string& name) const {
         for (const auto& col : m_columns) {
             if (trim(col.name) == trim(name)) return {col.min, col.max};
@@ -464,6 +564,12 @@ public:
         return {0.0f, 1.0f};
     }
 
+    /**
+     * @brief Low-level filtering method to extract specific sample types and roles.
+     * @param targetType Desired SampleType (Training, Validation, Test).
+     * @param isInput If true, returns features. If false, returns targets.
+     * @return Filtered data matrix.
+     */
     owTensor<float, 2> getRowsAndColsFiltered(SampleType targetType, bool isInput) const {
         std::vector<int> colIndices = getUsedColumnIndices(!isInput);
         size_t rows = 0;
@@ -491,16 +597,59 @@ public:
         return res;
     }
 
+    /** @return Features for samples in the Training set. */
     owTensor<float, 2> getTrainInput() const { return getRowsAndColsFiltered(SampleType::Training, true); }
+    /** @return Targets for samples in the Training set. */
     owTensor<float, 2> getTrainTarget() const { return getRowsAndColsFiltered(SampleType::Training, false); }
+    /** @return Features for samples in the Validation set. */
     owTensor<float, 2> getValInput() const { return getRowsAndColsFiltered(SampleType::Validation, true); }
+    /** @return Targets for samples in the Validation set. */
     owTensor<float, 2> getValTarget() const { return getRowsAndColsFiltered(SampleType::Validation, false); }
+    /** @return Features for samples in the Test set. */
     owTensor<float, 2> getTestInput() const { return getRowsAndColsFiltered(SampleType::Test, true); }
+    /** @return Targets for samples in the Test set. */
     owTensor<float, 2> getTestTarget() const { return getRowsAndColsFiltered(SampleType::Test, false); }
 
+    /**
+     * @brief Retrieves the input feature vector for a specific sample index.
+     * @param sampleNo Index of the sample.
+     * @return 1D tensor containing only columns marked as USED for input.
+     */
+    owTensor<float, 1> getInputValues(size_t sampleNo) const {
+        std::vector<int> inputIndices = getUsedColumnIndices(false);
+        if (sampleNo >= m_fullData.shape()[0]) return owTensor<float, 1>(0);
+        owTensor<float, 1> res(inputIndices.size());
+        for (size_t j = 0; j < inputIndices.size(); ++j) {
+            res(j) = m_fullData(sampleNo, (size_t)inputIndices[j]);
+        }
+        return res;
+    }
+
+    /**
+     * @brief Retrieves the target vector for a specific sample index.
+     * @param sampleNo Index of the sample.
+     * @return 1D tensor containing the target column(s).
+     */
+    owTensor<float, 1> getTargetValues(size_t sampleNo) const {
+        std::vector<int> targetIndices = getUsedColumnIndices(true);
+        if (sampleNo >= m_fullData.shape()[0]) return owTensor<float, 1>(0);
+        owTensor<float, 1> res(targetIndices.size());
+        for (size_t j = 0; j < targetIndices.size(); ++j) {
+            res(j) = m_fullData(sampleNo, (size_t)targetIndices[j]);
+        }
+        return res;
+    }
+
+    /** @return All input features for the entire dataset. */
     owTensor<float, 2> getAllInput() const { return getFullDataFiltered(true); }
+    /** @return All targets for the entire dataset. */
     owTensor<float, 2> getAllTarget() const { return getFullDataFiltered(false); }
 
+    /**
+     * @brief Retrieves all data for either input or target roles, applying auto-normalization if enabled.
+     * @param isInput True for features, false for targets.
+     * @return Matrix containing requested data.
+     */
     owTensor<float, 2> getFullDataFiltered(bool isInput) const {
         std::vector<int> colIndices = getUsedColumnIndices(!isInput);
         size_t rows = m_fullData.shape()[0];
@@ -522,14 +671,27 @@ public:
         return res;
     }
 
+    /**
+     * @brief Configures dataset splitting ratios and optionally shuffles sample assignments.
+     * @param train Ratio for training data (0.0 - 1.0).
+     * @param val Ratio for validation data.
+     * @param test Ratio for test data.
+     * @param shuffle If true, shuffles sample type assignments.
+     */
     void setRatios(float train, float val, float test, bool shuffle = true) {
         m_trainRatio = train; m_valRatio = val; m_testRatio = test;
         shuffleSampleTypes(shuffle);
     }
 
+    /** @param d Character to use as CSV delimiter (e.g., ',', ';'). */
     void setDelimiter(char d) { m_delimiter = d; }
+    /** @return Currently configured delimiter. */
     char getDelimiter() const { return m_delimiter; }
 
+    /**
+     * @brief Randomly assigns samples to Training, Validation, and Test sets based on configured ratios.
+     * @param shuffle If true, uses the internal RNG to randomize assignments.
+     */
     void shuffleSampleTypes(bool shuffle = true) {
         if (m_sampleTypes.empty()) return;
         size_t rows = m_sampleTypes.size();
@@ -547,6 +709,11 @@ public:
         m_sampleTypes = newTypes;
     }
 
+    /**
+     * @brief Returns a string representation of a sample's set assignment.
+     * @param index Row index.
+     * @return "Training", "Validation", "Testing", or "Unknown".
+     */
     std::string getSampleTypeString(size_t index) const {
         if (index >= m_sampleTypes.size()) return "Unknown";
         if (m_sampleTypes[index] == SampleType::Training) return "Training";
@@ -606,6 +773,7 @@ public:
 
 private:
     owTensor<float, 2> m_fullData;
+    std::vector<std::vector<std::string>> m_rawCSVData;
     std::vector<ColumnInfo> m_columns;
     std::vector<SampleType> m_sampleTypes;
     int m_targetVariableNum = 1;
