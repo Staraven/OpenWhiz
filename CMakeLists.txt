@@ -5,10 +5,11 @@ option(USE_GPU "Enable CUDA GPU Acceleration" OFF)
 
 
 if(NOT USE_GPU)
-    # CPU Mode - Clang
-    set(CMAKE_C_COMPILER "C:/dev/glist/zbin/glistzbin-win64/clang64/bin/clang.exe")
-    set(CMAKE_CXX_COMPILER "C:/dev/glist/zbin/glistzbin-win64/clang64/bin/clang++.exe")
-    
+   	# CPU Mode - Clang
+	if(WIN32)
+    	set(CMAKE_C_COMPILER "~/dev/glist/zbin/glistzbin-linux/clang64/bin/clang.exe")
+    	set(CMAKE_CXX_COMPILER "~/dev/glist/zbin/glistzbin-linux/clang64/bin/clang++.exe")
+	endif()
     project(OpenWhiz LANGUAGES CXX)
     include_directories(${CMAKE_SOURCE_DIR}/include)
 elseif(USE_GPU)
@@ -64,14 +65,15 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Examples
-add_subdirectory(examples/cac40NSForecastExample)
+add_subdirectory(examples/airfoilExample)
+add_subdirectory(examples/yachthydroExample)
+#add_subdirectory(examples/cac40NSForecastExample)
 #add_subdirectory(examples/cac40ForecastExample)
 #add_subdirectory(examples/cac40ConcatenateForecastExample)
 #add_subdirectory(examples/tryusdForecastExample)
 #add_subdirectory(examples/tryusdConcatenateForecastingExample)
 #add_subdirectory(examples/forecastExample)
 #add_subdirectory(examples/concatenateForecastingExample)
-#add_subdirectory(examples/airfoilExample)
 #add_subdirectory(examples/bankChurnExample)
 #add_subdirectory(examples/breastCancerExample)
 #add_subdirectory(examples/clusteringExample)
