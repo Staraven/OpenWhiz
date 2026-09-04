@@ -17,7 +17,9 @@ namespace ow {
 // - English: plain ASCII only.
 // - Turkish: ASCII + Turkish letters (Ç Ğ İ Ö Ş Ü and lowercase forms), with the
 //   Turkish-specific ASCII "I" -> dotless "ı" [U+0131] and "İ" [U+0130] -> dotted
-//   ASCII "i" mapping (generic ASCII toupper/tolower gets this wrong for Turkish).
+//   ASCII "i" mapping (generic ASCII case folding gets this wrong for Turkish).
+// - French: ASCII + French accented letters (À Â Ä Ç É È Ê Ë Î Ï Ô Ö Ù Û Ü Ÿ Œ Æ
+//   and lowercase forms), standard case folding (no special-case pairs needed).
 class owTextTokenizer {
 public:
     explicit owTextTokenizer(owLanguage language = owLanguage::English) : m_language(language) {}
@@ -132,11 +134,37 @@ private:
                     return false;
             }
         }
+        if (m_language == owLanguage::French) {
+            switch (cp) {
+                case 0x00C0: case 0x00E0: // À à
+                case 0x00C2: case 0x00E2: // Â â
+                case 0x00C4: case 0x00E4: // Ä ä
+                case 0x00C7: case 0x00E7: // Ç ç
+                case 0x00C8: case 0x00E8: // È è
+                case 0x00C9: case 0x00E9: // É é
+                case 0x00CA: case 0x00EA: // Ê ê
+                case 0x00CB: case 0x00EB: // Ë ë
+                case 0x00CE: case 0x00EE: // Î î
+                case 0x00CF: case 0x00EF: // Ï ï
+                case 0x00D4: case 0x00F4: // Ô ô
+                case 0x00D6: case 0x00F6: // Ö ö
+                case 0x00D9: case 0x00F9: // Ù ù
+                case 0x00DB: case 0x00FB: // Û û
+                case 0x00DC: case 0x00FC: // Ü ü
+                case 0x0178: case 0x00FF: // Ÿ ÿ
+                case 0x0152: case 0x0153: // Œ œ
+                case 0x00C6: case 0x00E6: // Æ æ
+                    return true;
+                default:
+                    return false;
+            }
+        }
         return false; // English: plain ASCII only.
     }
 
     uint32_t toLower(uint32_t cp) const {
         if (m_language == owLanguage::Turkish) return toLowerTurkish(cp);
+        if (m_language == owLanguage::French) return toLowerFrench(cp);
         return toLowerAscii(cp);
     }
 
@@ -155,6 +183,31 @@ private:
             case 0x00D6: return 0x00F6; // Ö -> ö
             case 0x015E: return 0x015F; // Ş -> ş
             case 0x00DC: return 0x00FC; // Ü -> ü
+            default: return cp;
+        }
+    }
+
+    static uint32_t toLowerFrench(uint32_t cp) {
+        if (cp >= 'A' && cp <= 'Z') return cp + 0x20;
+        switch (cp) {
+            case 0x00C0: return 0x00E0; // À -> à
+            case 0x00C2: return 0x00E2; // Â -> â
+            case 0x00C4: return 0x00E4; // Ä -> ä
+            case 0x00C7: return 0x00E7; // Ç -> ç
+            case 0x00C8: return 0x00E8; // È -> è
+            case 0x00C9: return 0x00E9; // É -> é
+            case 0x00CA: return 0x00EA; // Ê -> ê
+            case 0x00CB: return 0x00EB; // Ë -> ë
+            case 0x00CE: return 0x00EE; // Î -> î
+            case 0x00CF: return 0x00EF; // Ï -> ï
+            case 0x00D4: return 0x00F4; // Ô -> ô
+            case 0x00D6: return 0x00F6; // Ö -> ö
+            case 0x00D9: return 0x00F9; // Ù -> ù
+            case 0x00DB: return 0x00FB; // Û -> û
+            case 0x00DC: return 0x00FC; // Ü -> ü
+            case 0x0178: return 0x00FF; // Ÿ -> ÿ
+            case 0x0152: return 0x0153; // Œ -> œ
+            case 0x00C6: return 0x00E6; // Æ -> æ
             default: return cp;
         }
     }

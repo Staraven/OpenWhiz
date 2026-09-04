@@ -4,6 +4,7 @@
 
 #include "OpenWhiz/text/owLanguage.hpp"
 #include "OpenWhiz/text/tokenizers/owTurkishStemmer.hpp"
+#include "OpenWhiz/text/tokenizers/owFrenchStemmer.hpp"
 
 namespace ow {
 
@@ -17,6 +18,8 @@ public:
         switch (m_language) {
             case owLanguage::Turkish:
                 return m_turkish.stem(word);
+            case owLanguage::French:
+                return m_french.stem(word);
             default:
                 return word; // English: no-op passthrough, no suffix stripping needed.
         }
@@ -25,6 +28,7 @@ public:
 private:
     owLanguage m_language;
     owTurkishStemmer m_turkish;
+    owFrenchStemmer m_french;
 };
 
 } // namespace ow

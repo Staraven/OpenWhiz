@@ -6,7 +6,8 @@ namespace ow {
 // (no special-casing needed - plain ASCII word/case rules, no-op stemming).
 enum class owLanguage {
     English,
-    Turkish
+    Turkish,
+    French
 };
 
 } // namespace ow
