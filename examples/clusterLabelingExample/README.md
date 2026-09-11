@@ -21,9 +21,8 @@ examples/clusterLabelingExample/clusterLabelingExample
 `twenty_ng_sample.txt` is a small (300-row, 50/class, fixed seed) stratified
 subset of 20 Newsgroups' public test split (6 of its 20 categories, chosen
 for topic variety), included so the example is self-contained (no download
-needed to build or run it). 20 Newsgroups was chosen over an earlier AG News
-based version of this example because AG's Corpus (the source of AG News)
-states its data is for non-commercial research use only, which does not fit
-comfortably inside an Apache-2.0-licensed, commercially-oriented library;
+needed to build or run it). 20 Newsgroups was chosen over alternatives like
+AG News, whose source corpus restricts use to non-commercial research —
+a poor fit for an Apache-2.0-licensed, commercially-oriented library;
 20 Newsgroups carries no such restriction and is scikit-learn's standard
 `fetch_20newsgroups()` benchmark.

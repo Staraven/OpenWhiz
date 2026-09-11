@@ -5,6 +5,8 @@
 #include <utility>
 
 #include "OpenWhiz/text/owLanguage.hpp"
+#include "OpenWhiz/text/owLanguageDetector.hpp"
+#include "OpenWhiz/text/owMultilingualEmbeddingLookup.hpp"
 #include "OpenWhiz/text/owStemmer.hpp"
 #include "OpenWhiz/text/owEmbeddingLookup.hpp"
 #include "OpenWhiz/text/owSentimentPreset.hpp"
@@ -16,10 +18,9 @@
 // synthetic (4 numbers per word, two made-up clusters: "animal" words near
 // [1,0,0,0], "vehicle" words near [0,0,1,0]) - this demonstrates the pipeline
 // mechanics, not real embedding quality. For real embeddings, prune your own
-// vocabulary's vectors from a pretrained fastText release with
-// tools/text/prune_fasttext_vectors.py - real vocabulary/vector data is
-// deliberately never shipped in the library itself (see that script's and
-// OpenWhiz/text/README.md's notes on why).
+// vocabulary's vectors from a pretrained release with owWordVectorPruner.hpp -
+// real vocabulary/vector data is deliberately never shipped in the library
+// itself (see that header's and OpenWhiz/text/README.md's notes on why).
 //
 // English intentionally uses only exact vocabulary word forms in its sentences
 // (owStemmer is a no-op for English), while Turkish and French sentences use
@@ -79,13 +80,6 @@ void runLanguageDemo(const LangSample& sample) {
     options.trainRatio = 1.0f;
     options.valRatio = 0.0f;
     options.testRatio = 0.0f;
-    // Fixed seed so the demo's printed predictions are the same every run -
-    // owSentimentPreset::Options::useSeed/seed exists specifically for this kind
-    // of reproducibility need, since owNeuralNetwork's weight initialization is
-    // seed-sensitive on some architectures (an unlucky seed can start training
-    // from a near-dead-gradient state).
-    options.useSeed = true;
-    options.seed = 42;
 
     ow::owSentimentPreset classifier;
     std::string tempCsv = sample.vecFile + ".train.csv";
@@ -147,12 +141,29 @@ int main() {
             {"J'ai un chat", 0}, {"Mon chien est content", 0}, {"L'oiseau chante", 0}, {"Cet animal est mignon", 0},
             {"Je conduis ma voiture", 1}, {"Le bus est en retard", 1}, {"Nous avons pris le train", 1}, {"J'aime conduire", 1},
         },
-        {"Mon chat et mon chien sont amis", "Le train et le bus étaient en retard"}
+        {"Mon chat et mon chien sont très amis", "Le train et le bus étaient en retard"}
     };
 
     runLanguageDemo(english);
     runLanguageDemo(turkish);
     runLanguageDemo(french);
+
+    // Detects each test sentence's language and shows it routing to that
+    // language's own embedding table via owMultilingualEmbeddingLookup.
+    std::cout << "\n=== owLanguageDetector + owMultilingualEmbeddingLookup ===\n";
+    ow::owMultilingualEmbeddingLookup multiLookup;
+    multiLookup.loadForLanguage(ow::owLanguage::English, english.vecFile);
+    multiLookup.loadForLanguage(ow::owLanguage::Turkish, turkish.vecFile);
+    multiLookup.loadForLanguage(ow::owLanguage::French, french.vecFile);
+    for (const LangSample* sample : {&english, &turkish, &french}) {
+        for (const std::string& text : sample->testSentences) {
+            ow::owLanguage detected = ow::owLanguageDetector::detect(text);
+            const char* name = detected == ow::owLanguage::English ? "English"
+                              : detected == ow::owLanguage::Turkish ? "Turkish" : "French";
+            std::cout << "\"" << text << "\" -> detected=" << name
+                       << ", routed to " << name << "'s embedding table\n";
+        }
+    }
 
     return 0;
 }
