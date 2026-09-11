@@ -1,10 +1,10 @@
 #pragma once
 
-// Generic (project-agnostic) unsupervised clustering + human-readable labeling
-// on top of arbitrary embedding vectors: takes fixed-size vectors (e.g. from
+// Generic unsupervised clustering + human-readable labeling on top of
+// arbitrary embedding vectors: takes fixed-size vectors (e.g. from
 // owEmbeddingLookup::embedAverage()) plus each vector's stemmed tokens, and
 // returns a cluster assignment per item plus each cluster's most frequent
-// stems as a proposed label. Contains no project-specific vocabulary or data.
+// stems as a proposed label.
 //
 // Reuses owClusterLayer directly (centroid distances), trained with
 // MSE-to-zero via owADAMOptimizer - the same objective as

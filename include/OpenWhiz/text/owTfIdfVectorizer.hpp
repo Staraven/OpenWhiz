@@ -1,6 +1,6 @@
 #pragma once
 
-// Generic (project-agnostic) TF-IDF vectorizer over already-tokenized documents
+// Generic TF-IDF vectorizer over already-tokenized documents
 // (e.g. stemmed token lists from owStemmer/owTurkishStemmer). Fits a vocabulary +
 // per-term IDF from a corpus, then returns one dense TF-IDF vector per document -
 // a bag-of-words alternative to averaged pretrained embeddings
@@ -24,7 +24,7 @@ public:
     struct Options {
         // Terms appearing in fewer than this many documents are dropped - mirrors
         // the min-document-frequency pruning used for owEmbeddingLookup's
-        // vocabulary (see tools/text/prune_fasttext_vectors.py), same rationale:
+        // vocabulary (see owWordVectorPruner.hpp), same rationale:
         // singleton terms add dimensions without adding signal.
         int minDocFrequency = 2;
         // Terms appearing in MORE than this fraction of documents are dropped too -
@@ -33,8 +33,8 @@ public:
         // does below) otherwise systematically favors near-universal filler over
         // the lower-but-not-lowest-frequency terms that actually carry topic
         // signal - the more content-rich and lexically diverse the corpus, the
-        // worse that bias gets. Default 1.0 (no ceiling) keeps old callers'
-        // behavior unchanged.
+        // worse that bias gets. Default 1.0 applies no ceiling; set it
+        // explicitly to enable this filter.
         float maxDocFrequencyRatio = 1.0f;
         // Vocabulary is capped to the N terms with the highest (but, after the
         // maxDocFrequencyRatio filter above, not too-high) document frequency -

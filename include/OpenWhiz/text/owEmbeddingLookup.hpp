@@ -10,9 +10,9 @@ namespace ow {
 
 // Loads a pretrained fastText-format word vector table (word + N floats per line,
 // optional "<count> <dim>" header line) into an in-memory lookup. Intended to be
-// used with a table already pruned down to the project's actual vocabulary —
-// see libs/OpenWhiz/tools/text/prune_fasttext_vectors.py — not the full multi-GB
-// fastText release, which would be wasteful to ship and load whole.
+// used with a table already pruned down to a project's actual vocabulary —
+// see owWordVectorPruner.hpp — not the full multi-GB release, which would be
+// wasteful to ship and load whole.
 class owEmbeddingLookup {
 public:
     bool loadFromFile(const std::string& path) {

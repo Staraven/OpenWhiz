@@ -9,10 +9,10 @@ namespace ow {
 // no external dependency. Deliberately minimal: French inflection is far more
 // limited than Turkish's agglutination (plural is mostly a single trailing "-s"/
 // "-x", feminine mostly a trailing "-e", verbs conjugate via a handful of common
-// endings), so this does NOT attempt to mirror owTurkishStemmer's large suffix
-// table. A heuristic approximation, not a correct morphological analyzer: it does
-// not model irregular plurals (e.g. "cheval" -> "chevaux"), verb stem changes, or
-// elision. Input is expected to already be lowercased tokens.
+// endings), so its suffix table is intentionally smaller than
+// owTurkishStemmer's. Does not model irregular plurals (e.g. "cheval" ->
+// "chevaux"), verb stem changes, or elision. Input is expected to already be
+// lowercased tokens.
 class owFrenchStemmer {
 public:
     std::string stem(const std::string& word) const {

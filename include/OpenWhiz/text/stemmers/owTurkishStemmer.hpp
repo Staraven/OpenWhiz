@@ -9,10 +9,11 @@ namespace ow {
 // no external dependency. Iteratively strips the longest matching known nominal
 // suffix (plural, possessive, case) from the end of a word, across a few passes,
 // to approximate agglutinative stemming (e.g. "kitaplarimizdan" -> "kitap").
-// This is a heuristic approximation, not a correct morphological analyzer: it does
-// not model vowel-drop irregularities (e.g. "burun" -> "burnu") or verb
-// conjugation, and it can over-stem short words that only coincidentally end in a
-// known suffix. Input is expected to already be lowercased tokens.
+// Suffix stripping only: does not model vowel-drop irregularities (e.g.
+// "burun" -> "burnu") or verb conjugation, and strips a known suffix from the
+// end of a word whether or not it's genuinely an inflection (a short word
+// that happens to end the same way is stripped too). Input is expected to
+// already be lowercased tokens.
 class owTurkishStemmer {
 public:
     std::string stem(const std::string& word) const {

@@ -3,13 +3,14 @@
 #include <string>
 
 #include "OpenWhiz/text/owLanguage.hpp"
-#include "OpenWhiz/text/tokenizers/owTurkishStemmer.hpp"
-#include "OpenWhiz/text/tokenizers/owFrenchStemmer.hpp"
+#include "OpenWhiz/text/stemmers/owTurkishStemmer.hpp"
+#include "OpenWhiz/text/stemmers/owFrenchStemmer.hpp"
+#include "OpenWhiz/text/stemmers/owEnglishStemmer.hpp"
 
 namespace ow {
 
 // Language-dispatching stemmer facade: routes stem() to the right per-language
-// implementation. English (no inflection worth stripping) is a no-op passthrough.
+// implementation.
 class owStemmer {
 public:
     explicit owStemmer(owLanguage language = owLanguage::English) : m_language(language) {}
@@ -21,7 +22,7 @@ public:
             case owLanguage::French:
                 return m_french.stem(word);
             default:
-                return word; // English: no-op passthrough, no suffix stripping needed.
+                return m_english.stem(word);
         }
     }
 
@@ -29,6 +30,7 @@ private:
     owLanguage m_language;
     owTurkishStemmer m_turkish;
     owFrenchStemmer m_french;
+    owEnglishStemmer m_english;
 };
 
 } // namespace ow
