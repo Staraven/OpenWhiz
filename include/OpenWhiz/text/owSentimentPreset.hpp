@@ -45,11 +45,6 @@ public:
         // shuffleSplit/row-ordering assumptions). Not oversampling - no rows are
         // duplicated, only the loss's per-example weight changes.
         bool useClassWeights = false;
-        // Reproducible weight init, useful when diagnosing training issues
-        // (e.g. sweeping seeds to check for a bad initial-weight state).
-        // Leave false for normal use (time-based seed).
-        bool useSeed = false;
-        unsigned int seed = 0;
     };
 
     // embeddings.size() == labels.size(); labels are class indices in [0, numClasses).
@@ -68,6 +63,23 @@ public:
                int numClasses,
                const std::string& tempCsvPath,
                const Options& options) {
+        return train(embeddings, labels, numClasses, tempCsvPath, options, nullptr);
+    }
+
+    // perExampleWeights (2-class/binary path only): one weight per row in
+    // `embeddings`/`labels`, in the SAME order those were passed in. Only the
+    // first N entries (N = the actual training-split row count owDataset ends
+    // up with) are used, since the loss is only ever evaluated on the training
+    // split - matches how useClassWeights below reads the FULL label set (not
+    // train-split-only) but the loss itself is a training-time quantity.
+    // Takes priority over options.useClassWeights when non-null and non-empty
+    // (the two are alternative ways of shaping the same loss, not additive).
+    bool train(const std::vector<std::vector<float>>& embeddings,
+               const std::vector<int>& labels,
+               int numClasses,
+               const std::string& tempCsvPath,
+               const Options& options,
+               const std::vector<float>* perExampleWeights) {
         if (embeddings.empty() || embeddings.size() != labels.size() || numClasses < 2) {
             return false;
         }
@@ -76,7 +88,6 @@ public:
         }
 
         m_network = owNeuralNetwork();
-        if (options.useSeed) m_network.setSeed(options.seed);
         m_network.getDataset()->setAutoNormalizeEnabled(options.autoNormalize);
         if (!m_network.loadData(tempCsvPath)) {
             return false;
@@ -86,7 +97,15 @@ public:
 
         if (numClasses == 2) {
             m_network.createNeuralNetwork(options.hiddenSizes, "ReLU", "Sigmoid", false);
-            if (options.useClassWeights) {
+            if (perExampleWeights && !perExampleWeights->empty()) {
+                size_t trainCount = m_network.getDataset()->getTrainInput().shape()[0];
+                std::vector<float> trainWeights;
+                trainWeights.reserve(trainCount);
+                for (size_t i = 0; i < trainCount && i < perExampleWeights->size(); ++i) {
+                    trainWeights.push_back((*perExampleWeights)[i]);
+                }
+                m_network.setLoss(std::make_shared<owWeightedBinaryCrossEntropyLoss>(std::move(trainWeights)));
+            } else if (options.useClassWeights) {
                 int countPos = 0, countNeg = 0;
                 for (int lbl : labels) (lbl == 1 ? countPos : countNeg)++;
                 float n = static_cast<float>(labels.size());
@@ -117,28 +136,6 @@ public:
         // owLBFGSOptimizer's line search can stall after one step on non-toy
         // data (its step size collapses and does not recover), so Adam is
         // used here instead.
-        //
-        // One forward+backward pass with no weight update, to record the
-        // initial gradient norm - distinguishes a bad weight-init state
-        // (near-zero gradient) from a stall caused by the optimizer/learning
-        // rate despite a healthy initial gradient.
-        {
-            auto trainIn = m_network.getDataset()->getTrainInput();
-            auto trainTarget = m_network.getDataset()->getTrainTarget();
-            if (trainIn.size() > 0) {
-                auto pred = m_network.forward(trainIn);
-                m_network.backward(pred, trainTarget);
-                owTensor<float, 1> grads(m_network.getTotalParameterCount());
-                m_network.getGlobalGradients(grads);
-                double sumSq = 0.0;
-                for (size_t i = 0; i < grads.size(); ++i) sumSq += (double)grads.data()[i] * grads.data()[i];
-                m_lastInitialGradNorm = static_cast<float>(std::sqrt(sumSq));
-                m_network.reset();
-            } else {
-                m_lastInitialGradNorm = -1.0f;
-            }
-        }
-
         m_network.setOptimizer(std::make_shared<owADAMOptimizer>());
         m_network.setMaximumEpochNum(options.maxEpochs);
         m_network.setEnablePrinting(options.enablePrinting);
@@ -149,8 +146,67 @@ public:
         return true;
     }
 
-    // Diagnostics from the most recent train() call - see the debug probe above.
-    float getLastInitialGradNorm() const { return m_lastInitialGradNorm; }
+    // Multi-label variant: each row may belong to any number of the numLabels
+    // classes at once (independent sigmoid per label, not softmax).
+    // multiHotLabels[i][c] is 1 if row i has label c, 0 otherwise.
+    bool trainMultiLabel(const std::vector<std::vector<float>>& embeddings,
+                          const std::vector<std::vector<int>>& multiHotLabels,
+                          int numLabels,
+                          const std::string& tempCsvPath) {
+        return trainMultiLabel(embeddings, multiHotLabels, numLabels, tempCsvPath, Options());
+    }
+
+    bool trainMultiLabel(const std::vector<std::vector<float>>& embeddings,
+                          const std::vector<std::vector<int>>& multiHotLabels,
+                          int numLabels,
+                          const std::string& tempCsvPath,
+                          const Options& options) {
+        if (embeddings.empty() || embeddings.size() != multiHotLabels.size() || numLabels < 1) {
+            return false;
+        }
+        if (!writeMultiLabelTrainingCSV(tempCsvPath, embeddings, multiHotLabels, numLabels)) {
+            return false;
+        }
+
+        m_network = owNeuralNetwork();
+        m_network.getDataset()->setAutoNormalizeEnabled(options.autoNormalize);
+        if (!m_network.loadData(tempCsvPath)) {
+            return false;
+        }
+        m_network.getDataset()->setTargetVariableNum(numLabels);
+        m_network.getDataset()->setRatios(options.trainRatio, options.valRatio, options.testRatio, options.shuffleSplit);
+
+        m_network.createNeuralNetwork(options.hiddenSizes, "ReLU", "Sigmoid", false);
+        if (options.useClassWeights) {
+            // Balanced weight per label, computed from that label's own
+            // positive/negative count (not pooled across labels).
+            std::vector<int> countPos(numLabels, 0), countNeg(numLabels, 0);
+            for (const std::vector<int>& row : multiHotLabels) {
+                for (int c = 0; c < numLabels; ++c) (row[c] != 0 ? countPos[c] : countNeg[c])++;
+            }
+            float n = static_cast<float>(multiHotLabels.size());
+            std::vector<std::pair<float, float>> perLabelWeights(numLabels);
+            for (int c = 0; c < numLabels; ++c) {
+                float wPos = countPos[c] > 0 ? n / (2.0f * countPos[c]) : 1.0f;
+                float wNeg = countNeg[c] > 0 ? n / (2.0f * countNeg[c]) : 1.0f;
+                perLabelWeights[c] = {wPos, wNeg};
+            }
+            m_network.setLoss(std::make_shared<owWeightedBinaryCrossEntropyLoss>(perLabelWeights, static_cast<size_t>(numLabels)));
+        } else {
+            m_network.setLoss(std::make_shared<owBinaryCrossEntropyLoss>());
+        }
+
+        m_network.setOptimizer(std::make_shared<owADAMOptimizer>());
+        m_network.setMaximumEpochNum(options.maxEpochs);
+        m_network.setEnablePrinting(options.enablePrinting);
+        m_network.train();
+        m_numClasses = numLabels;
+        m_lastFinishReason = m_network.getTrainingFinishReason();
+        m_lastTrainLoss = m_network.getLastTrainError();
+        return true;
+    }
+
+    // Diagnostics captured during the most recent train() call.
     std::string getLastFinishReason() const { return m_lastFinishReason; }
     float getLastTrainLoss() const { return m_lastTrainLoss; }
 
@@ -225,9 +281,40 @@ private:
         return true;
     }
 
+    bool writeMultiLabelTrainingCSV(const std::string& path,
+                                     const std::vector<std::vector<float>>& embeddings,
+                                     const std::vector<std::vector<int>>& multiHotLabels,
+                                     int numLabels) const {
+        std::ofstream file(path);
+        if (!file.is_open()) {
+            return false;
+        }
+        file << std::fixed << std::setprecision(9);
+
+        size_t dim = embeddings.front().size();
+        for (size_t d = 0; d < dim; ++d) {
+            file << "e" << d << ",";
+        }
+        for (int c = 0; c < numLabels; ++c) {
+            file << "t" << c << (c + 1 < numLabels ? "," : "\n");
+        }
+
+        for (size_t i = 0; i < embeddings.size(); ++i) {
+            if (embeddings[i].size() != dim || multiHotLabels[i].size() != static_cast<size_t>(numLabels)) {
+                return false;
+            }
+            for (float v : embeddings[i]) {
+                file << v << ",";
+            }
+            for (int c = 0; c < numLabels; ++c) {
+                file << (multiHotLabels[i][c] != 0 ? "1" : "0") << (c + 1 < numLabels ? "," : "\n");
+            }
+        }
+        return true;
+    }
+
     owNeuralNetwork m_network;
     int m_numClasses = 0;
-    float m_lastInitialGradNorm = 0.0f;
     std::string m_lastFinishReason;
     float m_lastTrainLoss = 0.0f;
 };
