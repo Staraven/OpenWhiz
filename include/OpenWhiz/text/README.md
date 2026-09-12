@@ -65,7 +65,8 @@ OpenWhiz's other examples) each show one capability end-to-end:
   comment for what it does and doesn't model.
 - `stemmers/owEnglishStemmer.hpp` — no-op passthrough used by `owStemmer` for
   `owLanguage::English`; kept as its own class (same shape as the other two) so the
-  dispatch is uniform and there's a single place to add real stemming later.
+  dispatch is uniform and there's a single place to add real stemming for English
+  if a use case ever needs it.
   Tokenizers and stemmers live under `tokenizers/`/`stemmers/` respectively as the
   module grows to more languages.
 - `owEmbeddingLookup.hpp` — loads a pretrained fastText-format word vector table
