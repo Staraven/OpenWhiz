@@ -113,9 +113,9 @@
 // Text processing (tokenization, stemming, language detection, embeddings,
 // sentiment, clustering) - depends on the layers/losses/optimizers above
 #include "text/owLanguage.hpp"
-#include "text/tokenizers/owTextTokenizer.hpp"
+#include "text/owTextTokenizer.hpp"
 #include "text/owLanguageDetector.hpp"
-#include "text/owStemmer.hpp"
+#include "text/stemmers/owStemmer.hpp"
 #include "text/stemmers/owTurkishStemmer.hpp"
 #include "text/stemmers/owFrenchStemmer.hpp"
 #include "text/stemmers/owEnglishStemmer.hpp"

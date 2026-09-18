@@ -6,7 +6,7 @@
 
 #include "OpenWhiz/text/owEmbeddingLookup.hpp"
 #include "OpenWhiz/text/owSentimentPreset.hpp"
-#include "OpenWhiz/text/tokenizers/owTextTokenizer.hpp"
+#include "OpenWhiz/text/owTextTokenizer.hpp"
 
 // OpenWhiz/text pipeline demo: text in -> tokenize -> embed -> classify into
 // one of 3+ categories, using owSentimentPreset's numClasses>=3 (softmax)

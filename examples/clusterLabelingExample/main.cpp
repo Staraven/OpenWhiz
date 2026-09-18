@@ -10,10 +10,10 @@
 #include <vector>
 
 #include "OpenWhiz/text/owLanguage.hpp"
-#include "OpenWhiz/text/owStemmer.hpp"
+#include "OpenWhiz/text/stemmers/owStemmer.hpp"
 #include "OpenWhiz/text/owClusterLabeler.hpp"
 #include "OpenWhiz/text/owTfIdfVectorizer.hpp"
-#include "OpenWhiz/text/tokenizers/owTextTokenizer.hpp"
+#include "OpenWhiz/text/owTextTokenizer.hpp"
 
 // Measures owClusterLayer's cluster purity (via owClusterLabeler, the
 // tokenize -> TF-IDF -> unsupervised-cluster -> bag-of-stems-label mechanism

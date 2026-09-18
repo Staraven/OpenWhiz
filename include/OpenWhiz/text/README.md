@@ -39,7 +39,7 @@ OpenWhiz's other examples) each show one capability end-to-end:
   `owTextTokenizer` and `owStemmer`. Default is `English` everywhere — callers that
   need Turkish/French tokenization or stemming must pass the language explicitly
   (don't rely on the default for a non-English corpus).
-- `tokenizers/owTextTokenizer.hpp` — UTF-8 aware word-level tokenizer, constructed
+- `owTextTokenizer.hpp` — UTF-8 aware word-level tokenizer, constructed
   with an `owLanguage` (default `English`). Splits on anything that isn't a
   letter/digit; language controls which accented letters count as word characters
   and how they lowercase — English is plain ASCII, Turkish adds Ç Ğ İ Ö Ş Ü with
@@ -52,7 +52,7 @@ OpenWhiz's other examples) each show one capability end-to-end:
   value consumed by `owTextTokenizer`, `owStemmer`, and
   `owMultilingualEmbeddingLookup`, so one detection result can drive all
   three consistently instead of each caller guessing independently.
-- `owStemmer.hpp` — language-dispatching facade over the per-language stemmers
+- `stemmers/owStemmer.hpp` — language-dispatching facade over the per-language stemmers
   under `stemmers/`; construct with an `owLanguage` and call `stem()`.
 - `stemmers/owTurkishStemmer.hpp` — rule-based Turkish suffix stripping (kök
   bulma), used directly by `owStemmer` for `owLanguage::Turkish`. No dictionary, no
@@ -67,8 +67,9 @@ OpenWhiz's other examples) each show one capability end-to-end:
   `owLanguage::English`; kept as its own class (same shape as the other two) so the
   dispatch is uniform and there's a single place to add real stemming for English
   if a use case ever needs it.
-  Tokenizers and stemmers live under `tokenizers/`/`stemmers/` respectively as the
-  module grows to more languages.
+  Per-language stemmers live under `stemmers/`; `owTextTokenizer.hpp` is a single
+  file directly under `text/` since there's only one (language-parameterized)
+  tokenizer, not one per language.
 - `owEmbeddingLookup.hpp` — loads a pretrained fastText-format word vector table
   (word + N floats per line) into an in-memory lookup, plus a mean-pooling
   `embedAverage()` helper for turning a token list into one fixed-size vector.

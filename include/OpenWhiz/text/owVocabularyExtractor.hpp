@@ -5,7 +5,7 @@
 #include <string>
 
 #include "OpenWhiz/text/owLanguage.hpp"
-#include "OpenWhiz/text/tokenizers/owTextTokenizer.hpp"
+#include "OpenWhiz/text/owTextTokenizer.hpp"
 
 namespace ow {
 

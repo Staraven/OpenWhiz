@@ -7,10 +7,10 @@
 #include "OpenWhiz/text/owLanguage.hpp"
 #include "OpenWhiz/text/owLanguageDetector.hpp"
 #include "OpenWhiz/text/owMultilingualEmbeddingLookup.hpp"
-#include "OpenWhiz/text/owStemmer.hpp"
+#include "OpenWhiz/text/stemmers/owStemmer.hpp"
 #include "OpenWhiz/text/owEmbeddingLookup.hpp"
 #include "OpenWhiz/text/owSentimentPreset.hpp"
-#include "OpenWhiz/text/tokenizers/owTextTokenizer.hpp"
+#include "OpenWhiz/text/owTextTokenizer.hpp"
 
 // OpenWhiz/text pipeline demo: text in -> tokenize -> stem -> embed -> classify
 // (positive/negative sentiment), run in English, Turkish, and French to show
