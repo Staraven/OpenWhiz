@@ -10,4 +10,5 @@
 # into their own directory on every run - not source data.
 /examples/categoryClassificationExample/*.vec*
 /examples/multiLabelExample/*.vec*
-/examples/textClassificationExample/*.vec*
+/examples/sentimentClassificationExample/*.vec*
+/examples/vectorPruningExample/*.vec*

@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "OpenWhiz/openwhiz.hpp"
-#include "OpenWhiz/text/owWeightedCategoricalCrossEntropyLoss.hpp"
-#include "OpenWhiz/text/owWeightedBinaryCrossEntropyLoss.hpp"
+#include "OpenWhiz/losses/owWeightedCategoricalCrossEntropyLoss.hpp"
+#include "OpenWhiz/losses/owWeightedBinaryCrossEntropyLoss.hpp"
 
 namespace ow {
 

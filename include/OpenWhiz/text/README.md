@@ -19,10 +19,10 @@ way and keeps the result in its own data directory.
 
 Four runnable samples under `examples/*` (same layout/build convention as
 OpenWhiz's other examples) each show one capability end-to-end:
-- `textClassificationExample/` — tokenize -> stem -> embed -> classify
-  (2-class), in English, Turkish, and French, using a tiny hand-written
-  synthetic word-vector table (not real embeddings — see that example's own
-  comments).
+- `sentimentClassificationExample/` — tokenize -> stem -> embed -> classify
+  (2-class, positive/negative), in English, Turkish, and French, using a
+  tiny hand-written synthetic word-vector table (not real embeddings — see
+  that example's own comments).
 - `categoryClassificationExample/` — the same pipeline through
   `owSentimentPreset`'s 3+-class (softmax) path, classifying into one of
   three mutually-exclusive categories.
@@ -119,14 +119,6 @@ OpenWhiz's other examples) each show one capability end-to-end:
   averaged per word across senses), and `loadPlainTsv()` (generic
   `word\tposScore\tnegScore` for any other source). None of these formats' data
   is shipped here — point each loader at your own downloaded lexicon file.
-- `owWeightedBinaryCrossEntropyLoss.hpp` / `owWeightedCategoricalCrossEntropyLoss.hpp`
-  — class-weighted variants of OpenWhiz's own BCE/categorical-cross-entropy losses,
-  for imbalanced label distributions. Same eps-clamp as their unweighted counterparts.
-  The binary loss also accepts a per-example weight vector (instead of one scalar
-  per class) for cases where a single pooled class ratio doesn't fit the data - e.g.
-  a multi-language dataset where each language's own class ratio differs, so
-  weighting by row (language, label) beats one global ratio; see
-  `owSentimentPreset::train()`'s `perExampleWeights` parameter.
 - `owClusterLabeler.hpp` — unsupervised clustering over a set of embedding
   vectors (e.g. from `owEmbeddingLookup::embedAverage()`), plus a proposed
   human-readable label per cluster from its most frequent stemmed tokens

@@ -9,12 +9,12 @@
 namespace ow {
 
 // Class-weighted binary cross-entropy, same pattern as
-// owWeightedCategoricalCrossEntropyLoss - lives in text/ (not the core
-// layers/losses tree) since it's specific to class-imbalance handling for
-// text classification. eps matches ow::owBinaryCrossEntropyLoss's own clamp
-// (1e-12); no owProbabilityLayer is involved on the binary path (Sigmoid
-// output feeds this loss directly), so there's no clamp-mismatch risk here
-// like the softmax path had.
+// owWeightedCategoricalCrossEntropyLoss - a general-purpose loss for
+// imbalanced binary/multi-label classification, not specific to any one
+// domain. eps matches ow::owBinaryCrossEntropyLoss's own clamp (1e-12); no
+// owProbabilityLayer is involved on the binary path (Sigmoid output feeds
+// this loss directly), so there's no clamp-mismatch risk here like the
+// softmax path had.
 class owWeightedBinaryCrossEntropyLoss : public owLoss {
 public:
     // weightPositive/weightNegative: per-class multiplier, e.g. balanced =

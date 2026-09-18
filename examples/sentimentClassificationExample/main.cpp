@@ -12,27 +12,27 @@
 #include "OpenWhiz/text/owSentimentPreset.hpp"
 #include "OpenWhiz/text/tokenizers/owTextTokenizer.hpp"
 
-// OpenWhiz/text pipeline demo: text in -> tokenize -> stem -> embed -> classify,
-// run in English, Turkish, and French to show the SAME mechanism works across
-// languages via owLanguage. The word vectors below are tiny, hand-written,
-// synthetic (4 numbers per word, two made-up clusters: "animal" words near
-// [1,0,0,0], "vehicle" words near [0,0,1,0]) - this demonstrates the pipeline
-// mechanics, not real embedding quality. For real embeddings, prune your own
+// OpenWhiz/text pipeline demo: text in -> tokenize -> stem -> embed -> classify
+// (positive/negative sentiment), run in English, Turkish, and French to show
+// the SAME mechanism works across languages via owLanguage. The word vectors
+// below are tiny, hand-written, synthetic (4 numbers per word, two made-up
+// clusters: positive words near [1,0,0,0], negative words near [0,0,1,0]) -
+// this demonstrates the pipeline mechanics, not real embedding quality or
+// real sentiment lexicon data. For real embeddings, prune your own
 // vocabulary's vectors from a pretrained release with owWordVectorPruner.hpp -
 // real vocabulary/vector data is deliberately never shipped in the library
 // itself (see that header's and OpenWhiz/text/README.md's notes on why).
 //
-// English intentionally uses only exact vocabulary word forms in its sentences
-// (owStemmer is a no-op for English), while Turkish and French sentences use
-// inflected forms (plurals) that owStemmer actually reduces back to the words
-// listed below - e.g. Turkish "kediler" -> "kedi", French "chats" -> "chat".
+// Each language's sentences intentionally use only exact vocabulary word
+// forms (owStemmer still runs on every token; for these particular words it
+// has nothing to reduce).
 
 struct LangSample {
     ow::owLanguage language;
     std::string name;
     std::string vecFile;
     std::vector<std::pair<std::string, std::vector<float>>> words;
-    std::vector<std::pair<std::string, int>> trainSentences; // text, label (0=animal, 1=vehicle)
+    std::vector<std::pair<std::string, int>> trainSentences; // text, label (0=negative, 1=positive)
     std::vector<std::string> testSentences;
 };
 
@@ -74,7 +74,7 @@ void runLanguageDemo(const LangSample& sample) {
 
     ow::owSentimentPreset::Options options;
     options.hiddenSizes = {4};
-    options.maxEpochs = 100;
+    options.maxEpochs = 300;
     // All 8 synthetic examples are used for training - this is a mechanism demo,
     // not a real held-out evaluation.
     options.trainRatio = 1.0f;
@@ -90,58 +90,58 @@ void runLanguageDemo(const LangSample& sample) {
 
     for (auto& text : sample.testSentences) {
         auto scores = classifier.predict(embed(text));
-        std::string predicted = scores[1] > scores[0] ? "vehicle" : "animal";
+        std::string predicted = scores[1] > scores[0] ? "positive" : "negative";
         std::cout << "\"" << text << "\" -> " << predicted
-                   << " (P(animal)=" << scores[0] << " P(vehicle)=" << scores[1] << ")\n";
+                   << " (P(negative)=" << scores[0] << " P(positive)=" << scores[1] << ")\n";
     }
 }
 
 int main() {
-    std::cout << "=== OpenWhiz/text: tokenize -> stem -> embed -> classify (EN/TR/FR) ===\n";
+    std::cout << "=== OpenWhiz/text: tokenize -> stem -> embed -> classify (positive/negative, EN/TR/FR) ===\n";
 
     LangSample english{
-        ow::owLanguage::English, "English", "examples/textClassificationExample/en.vec",
+        ow::owLanguage::English, "English", "examples/sentimentClassificationExample/en.vec",
         {
-            {"cat", {1.0f, 0.0f, 0.0f, 0.0f}}, {"dog", {0.9f, 0.1f, 0.0f, 0.0f}},
-            {"bird", {0.8f, 0.2f, 0.0f, 0.0f}}, {"pet", {0.85f, 0.15f, 0.0f, 0.0f}},
-            {"car", {0.0f, 0.0f, 1.0f, 0.0f}}, {"bus", {0.0f, 0.0f, 0.9f, 0.1f}},
-            {"train", {0.0f, 0.0f, 0.8f, 0.2f}}, {"drive", {0.0f, 0.0f, 0.85f, 0.15f}},
+            {"love", {1.0f, 0.0f, 0.0f, 0.0f}}, {"amazing", {0.9f, 0.1f, 0.0f, 0.0f}},
+            {"wonderful", {0.8f, 0.2f, 0.0f, 0.0f}}, {"great", {0.85f, 0.15f, 0.0f, 0.0f}},
+            {"hate", {0.0f, 0.0f, 1.0f, 0.0f}}, {"terrible", {0.0f, 0.0f, 0.9f, 0.1f}},
+            {"awful", {0.0f, 0.0f, 0.8f, 0.2f}}, {"horrible", {0.0f, 0.0f, 0.85f, 0.15f}},
         },
         {
-            {"I have a cat", 0}, {"My dog is happy", 0}, {"The bird sings", 0}, {"I love my pet", 0},
-            {"I drive my car", 1}, {"The bus is late", 1}, {"We took the train", 1}, {"I like to drive", 1},
+            {"I love this", 1}, {"This is amazing", 1}, {"What a wonderful day", 1}, {"This is great", 1},
+            {"I hate this", 0}, {"This is terrible", 0}, {"What an awful day", 0}, {"This is horrible", 0},
         },
-        {"My cat and dog are friends", "The train and bus were both late"}
+        {"This is truly amazing and wonderful", "This is terrible and awful"}
     };
 
     LangSample turkish{
-        ow::owLanguage::Turkish, "Turkish", "examples/textClassificationExample/tr.vec",
+        ow::owLanguage::Turkish, "Turkish", "examples/sentimentClassificationExample/tr.vec",
         {
-            {"kedi", {1.0f, 0.0f, 0.0f, 0.0f}}, {"köpek", {0.9f, 0.1f, 0.0f, 0.0f}},
-            {"kuş", {0.8f, 0.2f, 0.0f, 0.0f}}, {"hayvan", {0.85f, 0.15f, 0.0f, 0.0f}},
-            {"araba", {0.0f, 0.0f, 1.0f, 0.0f}}, {"otobüs", {0.0f, 0.0f, 0.9f, 0.1f}},
-            {"tren", {0.0f, 0.0f, 0.8f, 0.2f}}, {"sürmek", {0.0f, 0.0f, 0.85f, 0.15f}},
+            {"harika", {1.0f, 0.0f, 0.0f, 0.0f}}, {"güzel", {0.9f, 0.1f, 0.0f, 0.0f}},
+            {"mükemmel", {0.8f, 0.2f, 0.0f, 0.0f}}, {"keyifli", {0.85f, 0.15f, 0.0f, 0.0f}},
+            {"berbat", {0.0f, 0.0f, 1.0f, 0.0f}}, {"kötü", {0.0f, 0.0f, 0.9f, 0.1f}},
+            {"korkunç", {0.0f, 0.0f, 0.8f, 0.2f}}, {"rezil", {0.0f, 0.0f, 0.85f, 0.15f}},
         },
         {
-            {"Kediler çok tatlı", 0}, {"Köpekler mutlu", 0}, {"Kuşlar öter", 0}, {"Hayvanlar güzel", 0},
-            {"Arabalar hızlı", 1}, {"Otobüsler geç kaldı", 1}, {"Trenler rahat", 1}, {"Sürmek güzel", 1},
+            {"Bu çok harika", 1}, {"Hava çok güzel", 1}, {"Sonuç mükemmel", 1}, {"Film keyifli", 1},
+            {"Bu çok berbat", 0}, {"Hava çok kötü", 0}, {"Sonuç korkunç", 0}, {"Film rezil", 0},
         },
-        {"Kediler ve köpekler arkadaş", "Otobüs ve tren geç kaldı"}
+        {"Bu film harika ve güzel", "Bu film berbat ve korkunç"}
     };
 
     LangSample french{
-        ow::owLanguage::French, "French", "examples/textClassificationExample/fr.vec",
+        ow::owLanguage::French, "French", "examples/sentimentClassificationExample/fr.vec",
         {
-            {"chat", {1.0f, 0.0f, 0.0f, 0.0f}}, {"chien", {0.9f, 0.1f, 0.0f, 0.0f}},
-            {"oiseau", {0.8f, 0.2f, 0.0f, 0.0f}}, {"animal", {0.85f, 0.15f, 0.0f, 0.0f}},
-            {"voiture", {0.0f, 0.0f, 1.0f, 0.0f}}, {"bus", {0.0f, 0.0f, 0.9f, 0.1f}},
-            {"train", {0.0f, 0.0f, 0.8f, 0.2f}}, {"conduire", {0.0f, 0.0f, 0.85f, 0.15f}},
+            {"incroyable", {1.0f, 0.0f, 0.0f, 0.0f}}, {"génial", {0.9f, 0.1f, 0.0f, 0.0f}},
+            {"merveilleux", {0.8f, 0.2f, 0.0f, 0.0f}}, {"magnifique", {0.85f, 0.15f, 0.0f, 0.0f}},
+            {"horrible", {0.0f, 0.0f, 1.0f, 0.0f}}, {"terrible", {0.0f, 0.0f, 0.9f, 0.1f}},
+            {"désastreux", {0.0f, 0.0f, 0.8f, 0.2f}}, {"épouvantable", {0.0f, 0.0f, 0.85f, 0.15f}},
         },
         {
-            {"J'ai un chat", 0}, {"Mon chien est content", 0}, {"L'oiseau chante", 0}, {"Cet animal est mignon", 0},
-            {"Je conduis ma voiture", 1}, {"Le bus est en retard", 1}, {"Nous avons pris le train", 1}, {"J'aime conduire", 1},
+            {"C'est incroyable", 1}, {"C'est génial", 1}, {"C'est merveilleux", 1}, {"C'est magnifique", 1},
+            {"C'est horrible", 0}, {"C'est terrible", 0}, {"C'est désastreux", 0}, {"C'est épouvantable", 0},
         },
-        {"Mon chat et mon chien sont très amis", "Le train et le bus étaient en retard"}
+        {"C'est vraiment génial et merveilleux", "C'est désastreux et épouvantable"}
     };
 
     runLanguageDemo(english);
