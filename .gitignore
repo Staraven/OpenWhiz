@@ -8,7 +8,4 @@
 
 # Runtime-generated word-vector tables + training CSVs these examples write
 # into their own directory on every run - not source data.
-/examples/categoryClassificationExample/*.vec*
-/examples/multiLabelExample/*.vec*
-/examples/sentimentClassificationExample/*.vec*
-/examples/vectorPruningExample/*.vec*
+examples/**/*.vec*
